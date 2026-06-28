@@ -1,0 +1,72 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# Despliegue a Azure Container Apps — eciexpress-prod-gateway (API Gateway)
+#
+# ⚠️  INERTE A PROPÓSITO (igual que los otros 7 servicios). Para ahorrar créditos:
+#       - Disparador SOLO manual (workflow_dispatch).
+#       - El job de deploy está protegido con `if: false`.
+#     El YAML está completo y correcto: encenderlo es cambiar una línea.
+#
+# El gateway es el 8.º Container App y el ÚNICO con ingress externo. No tiene base de
+# datos ni migraciones (a diferencia de los 7 servicios), por eso este workflow NO tiene
+# paso de migraciones.
+#
+# CÓMO ENCENDERLO cuando la infra exista:
+#   1. Aplicar la infra (carpeta infra/) y tener el ACR + Container App eciexpress-prod-gateway.
+#   2. Cargar los GitHub Secrets del repo (ver INFRA_RESUMEN §Bootstrap):
+#        AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, ACR_NAME
+#   3. Cargar en Key Vault los secretos reales: firebase-service-account-json, redis-url.
+#   4. En el job `deploy`, cambiar `if: false` por la condición real
+#      (p.ej. if: github.ref == 'refs/heads/main') y descomentar el trigger `push`.
+# ═════════════════════════════════════════════════════════════════════════════
+name: azure-deploy
+
+on:
+  workflow_dispatch: {} # solo manual; inerte por ahora
+  # TODO(activar): descomentar para build+deploy automático al hacer push.
+  # push:
+  #   branches: [main]
+
+permissions:
+  contents: read
+  id-token: write # login OIDC al Service Principal, sin secretos de larga vida
+
+env:
+  IMAGE_NAME: gateway
+  CONTAINER_APP: eciexpress-prod-gateway
+  RESOURCE_GROUP: eciexpress-prod-rg
+
+jobs:
+  deploy:
+    name: build (ACR) -> update Container App
+    runs-on: ubuntu-latest
+    # ── INERTE: no corre hasta quitar esta línea. ──
+    if: false # TODO(activar): cambiar por github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Build + push en el propio ACR (server-side): no requiere docker local.
+      - name: Build & push image to ACR
+        run: |
+          az acr build \
+            --registry "${{ secrets.ACR_NAME }}" \
+            --image "${IMAGE_NAME}:${{ github.sha }}" \
+            --image "${IMAGE_NAME}:latest" \
+            .
+
+      # NOTA: el gateway NO tiene base de datos ni migraciones (a diferencia de los 7
+      # servicios). No hay paso de migraciones aquí a propósito.
+
+      - name: Update Container App image
+        run: |
+          az containerapp update \
+            --name "${CONTAINER_APP}" \
+            --resource-group "${RESOURCE_GROUP}" \
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}"
