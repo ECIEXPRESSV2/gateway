@@ -23,8 +23,8 @@ name: azure-deploy
 on:
   workflow_dispatch: {} # solo manual; inerte por ahora
   # TODO(activar): descomentar para build+deploy automático al hacer push.
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -40,7 +40,7 @@ jobs:
     name: build (ACR) -> update Container App
     runs-on: ubuntu-latest
     # ── INERTE: no corre hasta quitar esta línea. ──
-    if: false # TODO(activar): cambiar por github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     environment: production
     steps:
       - uses: actions/checkout@v4
