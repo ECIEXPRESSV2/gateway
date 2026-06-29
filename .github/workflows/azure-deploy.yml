@@ -52,14 +52,16 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Build + push en el propio ACR (server-side): no requiere docker local.
+      # Build + push con Docker (az acr build / ACR Tasks está bloqueado en esta suscripción).
       - name: Build & push image to ACR
         run: |
-          az acr build \
-            --registry "${{ secrets.ACR_NAME }}" \
-            --image "${IMAGE_NAME}:${{ github.sha }}" \
-            --image "${IMAGE_NAME}:latest" \
+          az acr login --name "${{ secrets.ACR_NAME }}"
+          docker build \
+            -t "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}" \
+            -t "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:latest" \
             .
+          docker push "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}"
+          docker push "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:latest"
 
       # NOTA: el gateway NO tiene base de datos ni migraciones (a diferencia de los 7
       # servicios). No hay paso de migraciones aquí a propósito.
