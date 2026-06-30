@@ -57,11 +57,9 @@ jobs:
         run: |
           az acr login --name "${{ secrets.ACR_NAME }}"
           docker build \
-            -t "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}" \
-            -t "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:latest" \
+            -t "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:production" \
             .
-          docker push "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}"
-          docker push "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:latest"
+          docker push "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:production"
 
       # NOTA: el gateway NO tiene base de datos ni migraciones (a diferencia de los 7
       # servicios). No hay paso de migraciones aquí a propósito.
@@ -71,4 +69,33 @@ jobs:
           az containerapp update \
             --name "${CONTAINER_APP}" \
             --resource-group "${RESOURCE_GROUP}" \
-            --image "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}"
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:production"
+
+      - name: Cleanup old untagged images
+        # ACR Tasks (az acr run / acr purge) está bloqueado en esta suscripción
+        # (TasksOperationsNotAllowed). Borramos los manifests sin tag directamente
+        # con el data-plane del registry. No falla el deploy si esto da error.
+        continue-on-error: true
+        run: |
+          echo "Cleaning old untagged images..."
+
+          # Al reusar el tag 'production', cada push deja sin tag el manifest anterior.
+          # Borramos los manifests sin tag con más de 3 días de antigüedad.
+          CUTOFF=$(date -u -d '3 days ago' +%s)
+
+          az acr manifest list-metadata \
+            --registry "${{ secrets.ACR_NAME }}" \
+            --name "${IMAGE_NAME}" \
+            --query "[?tags==null].[digest,lastUpdateTime]" -o tsv \
+          | while read -r digest ts; do
+              [ -z "$digest" ] && continue
+              ts_epoch=$(date -u -d "$ts" +%s 2>/dev/null || echo 0)
+              if [ "$ts_epoch" -lt "$CUTOFF" ]; then
+                echo "Deleting untagged ${IMAGE_NAME}@$digest ($ts)"
+                az acr repository delete --yes \
+                  --name "${{ secrets.ACR_NAME }}" \
+                  --image "${IMAGE_NAME}@$digest"
+              fi
+            done
+
+          echo "Cleanup done."
