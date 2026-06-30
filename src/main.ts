@@ -2,12 +2,18 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { WsProxyService } from './proxy/ws-proxy.service';
+import { StructuredLogger } from './common/logger/structured.logger';
+import { setupAppInsights } from './common/telemetry/app-insights';
 import * as http from 'node:http';
 
 async function bootstrap() {
+  // Inicializa Application Insights antes de crear la app para que el SDK pueda
+  // instrumentar HTTP/dependencias. No-op si no hay connection string (local).
+  setupAppInsights();
+
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
-    logger: ['error', 'warn', 'log'],
+    logger: new StructuredLogger(),
   });
 
   const corsOrigins = process.env['CORS_ORIGINS'];
