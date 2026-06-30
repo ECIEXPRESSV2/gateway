@@ -57,11 +57,9 @@ jobs:
         run: |
           az acr login --name "${{ secrets.ACR_NAME }}"
           docker build \
-            -t "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}" \
-            -t "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:latest" \
+            -t "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:production" \
             .
-          docker push "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}"
-          docker push "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:latest"
+          docker push "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:production"
 
       # NOTA: el gateway NO tiene base de datos ni migraciones (a diferencia de los 7
       # servicios). No hay paso de migraciones aquí a propósito.
@@ -71,4 +69,13 @@ jobs:
           az containerapp update \
             --name "${CONTAINER_APP}" \
             --resource-group "${RESOURCE_GROUP}" \
-            --image "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${{ github.sha }}"
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:production"
+
+      - name: Cleanup old untagged images
+        run: |
+          echo "Cleaning old untagged images..."
+
+          az acr run \
+            --registry "${{ secrets.ACR_NAME }}" \
+            --cmd "acr purge --filter '${IMAGE_NAME}:.*' --ago 3d --untagged" \
+            /dev/null
