@@ -8,6 +8,12 @@ export interface IdentityContext {
   storeId: string | null;
 }
 
+const ROLE_PRIORITY = ['ADMIN', 'VENDOR', 'ANALYST', 'BUYER'];
+
+function pickEffectiveRole(roles: string[]): string {
+  return ROLE_PRIORITY.find((role) => roles.includes(role)) ?? roles[0] ?? '';
+}
+
 // CRÍTICO DE SEGURIDAD: borrar siempre los headers de identidad que venga del cliente
 // antes de inyectar los reales. Si no, cualquiera puede falsificar x-user-id.
 const IDENTITY_HEADERS_TO_STRIP = [
@@ -67,7 +73,7 @@ export function injectHeaders(
 
     case 'products':
       req.headers['x-user-id'] = identity.userId;
-      req.headers['x-user-role'] = identity.roles[0] ?? '';
+      req.headers['x-user-role'] = pickEffectiveRole(identity.roles);
       if (identity.storeId) {
         req.headers['x-user-store'] = identity.storeId;
       }
@@ -75,7 +81,7 @@ export function injectHeaders(
 
     case 'fulfillment':
       req.headers['x-user-id'] = identity.userId;
-      req.headers['x-user-role'] = identity.roles[0] ?? '';
+      req.headers['x-user-role'] = pickEffectiveRole(identity.roles);
       if (identity.storeId) {
         req.headers['x-user-store'] = identity.storeId;
       }
